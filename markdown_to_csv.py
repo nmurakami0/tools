@@ -1,9 +1,9 @@
 import argparse
-import csv
 import re
+from typing import Optional
 
 
-def parse_markdown_header(target_string: str) -> str:
+def parse_markdown_header(target_string: str) -> Optional[str]:
     pattern = re.compile(r'#+ (.+)')
     match = pattern.match(target_string)
     if match:
