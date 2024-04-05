@@ -27,7 +27,7 @@ args = parser.parse_args()
 
 
 with open(args.input_file, 'r') as f:
-    master_name = ''
+    logical_name = ''
     table_name = ''
     is_table = False
     output_lines = []
@@ -35,17 +35,21 @@ with open(args.input_file, 'r') as f:
         parsed = parse_markdown_header(line)
         if parsed is not None:
             master_table_name = parsed
+            print(master_table_name)
             table_name = ''
             if '(' in master_table_name:
-                master_name_parts = master_table_name.split('(')
-                master_name = master_name_parts[0]
-                table_name = master_name_parts[1].replace(')', '')
+                raw_name_parts = master_table_name.split('(')
+                logical_name = raw_name_parts[0]
+                table_name = raw_name_parts[1].replace(')', '')
+            else:
+                logical_name = master_table_name
+                table_name = 'None'
             is_table = False
         if '| --- | --- | --- |' in line:
             continue
         if is_table and '|' in line:
             parts = line.split('|')
-            parts.insert(0, master_name)
+            parts.insert(0, logical_name)
             parts.insert(1, table_name)
             output_lines.append(','.join([part.strip() for part in parts if part != '']))
         if parse_table_header(line):
