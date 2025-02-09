@@ -9,6 +9,20 @@ from openai import OpenAI
 from pydub import AudioSegment
 
 
+def normalize_audio(audio_segment: AudioSegment, target_dBFS: float = -20.0) -> AudioSegment:
+    """
+    Normalize the volume of an audio segment to a target dBFS.
+
+    Args:
+        audio_segment (AudioSegment): The audio segment to normalize
+        target_dBFS (float): Target dBFS value (default: -20.0)
+
+    Returns:
+        AudioSegment: Normalized audio segment
+    """
+    change_in_dBFS = target_dBFS - audio_segment.dBFS
+    return audio_segment.apply_gain(change_in_dBFS)
+
 def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
     """
     Split an audio file into smaller chunks.
@@ -23,8 +37,9 @@ def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
     # Get file extension
     _, ext = os.path.splitext(file_path)
 
-    # Load audio file
+    # Load and normalize audio file
     audio = AudioSegment.from_file(file_path)
+    audio = normalize_audio(audio)
 
     # Calculate chunk duration based on file size and total duration
     file_size = os.path.getsize(file_path)
@@ -75,8 +90,8 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
     try:
         # Split audio if file is too large (>25MB)
         if os.path.getsize(file_path) > 25 * 1024 * 1024:
-            print("Audio file is larger than 25MB. Splitting into chunks...")
-            chunk_paths = split_audio(file_path)
+            print("Audio file is larger than 25MB. Normalizing and splitting into chunks...")
+            chunk_paths = split_audio(file_path)  # Audio is normalized inside split_audio
             transcribed_text = ""
 
             for i, chunk_path in enumerate(chunk_paths):
@@ -97,12 +112,24 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
                 os.rmdir(chunks_dir)
         else:
             # Process single file if size is acceptable
-            with open(file_path, "rb") as audio_file:
+            # First normalize the audio
+            audio = AudioSegment.from_file(file_path)
+            normalized_audio = normalize_audio(audio)
+
+            # Export normalized audio to a temporary file
+            temp_path = file_path + ".normalized"
+            normalized_audio.export(temp_path, format=Path(file_path).suffix[1:])
+
+            # Process the normalized audio
+            with open(temp_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file
                 )
                 transcribed_text = transcript.text
+
+            # Clean up temporary file
+            os.remove(temp_path)
 
         if output_path:
             output_dir = os.path.dirname(output_path)
