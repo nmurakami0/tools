@@ -4,10 +4,41 @@ import os
 from pathlib import Path
 from typing import List
 
+import numpy as np
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from openai import OpenAI
 from pydub import AudioSegment
+from pydub.effects import normalize
+from scipy import signal
 
+
+def apply_noise_reduction(audio_segment: AudioSegment) -> AudioSegment:
+    """
+    Apply noise reduction to an audio segment.
+
+    Args:
+        audio_segment (AudioSegment): Input audio segment
+
+    Returns:
+        AudioSegment: Processed audio segment with reduced noise
+    """
+    # Convert to numpy array for processing
+    samples = np.array(audio_segment.get_array_of_samples())
+    sample_rate = audio_segment.frame_rate
+
+    # Apply high-pass filter to remove low frequency noise (below 80Hz)
+    nyquist = sample_rate // 2
+    cutoff = 80 / nyquist
+    b, a = signal.butter(4, cutoff, btype='high', analog=False)
+    filtered = signal.filtfilt(b, a, samples)
+
+    # Convert back to AudioSegment
+    filtered_audio = audio_segment._spawn(filtered.astype(np.int16))
+
+    # Normalize audio levels
+    # normalized_audio = normalize(filtered_audio)
+
+    return filtered_audio #normalized_audio
 
 def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
     """
@@ -81,15 +112,27 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
 
             for i, chunk_path in enumerate(chunk_paths):
                 print(f"Processing chunk {i+1}/{len(chunk_paths)}...")
-                with open(chunk_path, "rb") as audio_file:
+                # Load and process audio chunk
+                audio = AudioSegment.from_file(chunk_path)
+                processed_audio = apply_noise_reduction(audio)
+
+                # Get file extension
+                _, ext = os.path.splitext(chunk_path)
+
+                # Export processed chunk to temporary file
+                temp_path = chunk_path + "_processed" + ext
+                processed_audio.export(temp_path, format=os.path.splitext(chunk_path)[1][1:])
+
+                with open(temp_path, "rb") as audio_file:
                     transcript = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file
                     )
                     transcribed_text += transcript.text + "\n"
 
-                # Clean up chunk
+                # Clean up chunks
                 os.remove(chunk_path)
+                os.remove(temp_path)
 
             # Remove chunks directory if empty
             chunks_dir = os.path.dirname(chunk_paths[0])
@@ -97,12 +140,23 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
                 os.rmdir(chunks_dir)
         else:
             # Process single file if size is acceptable
-            with open(file_path, "rb") as audio_file:
+            print("Applying noise reduction...")
+            audio = AudioSegment.from_file(file_path)
+            processed_audio = apply_noise_reduction(audio)
+
+            # Export processed audio to temporary file
+            temp_path = file_path + "_processed"
+            processed_audio.export(temp_path, format=os.path.splitext(file_path)[1][1:])
+
+            with open(temp_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file
                 )
                 transcribed_text = transcript.text
+
+            # Clean up temporary file
+            os.remove(temp_path)
 
         if output_path:
             output_dir = os.path.dirname(output_path)
