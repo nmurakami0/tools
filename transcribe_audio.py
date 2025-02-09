@@ -81,13 +81,14 @@ def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
 
     return chunk_paths
 
-def transcribe_audio(file_path, output_path=None, api_key=None):
+def transcribe_audio(file_path, output_path=None, processed_audio_path=None, api_key=None):
     """
     Transcribe an audio file using OpenAI's Whisper model.
 
     Args:
         file_path (str): Path to the audio file
         output_path (str, optional): Path to save the transcription. If not provided, only returns the text
+        processed_audio_path (str, optional): Path to save the processed audio file. If not provided, processed audio won't be saved
         api_key (str, optional): OpenAI API key. If not provided, will look for OPENAI_API_KEY env variable
 
     Returns:
@@ -114,13 +115,18 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
                 print(f"Processing chunk {i+1}/{len(chunk_paths)}...")
                 # Load and process audio chunk
                 audio = AudioSegment.from_file(chunk_path)
-                processed_audio = apply_noise_reduction(audio)
+                processed_audio = audio #apply_noise_reduction(audio)
 
                 # Get file extension
                 _, ext = os.path.splitext(chunk_path)
 
                 # Export processed chunk to temporary file
-                temp_path = chunk_path + "_processed" + ext
+                # Save processed chunk if path is provided
+                if processed_audio_path:
+                    processed_chunk_path = f"{processed_audio_path}_chunk_{i}{ext}"
+                    processed_audio.export(processed_chunk_path, format=os.path.splitext(chunk_path)[1][1:])
+
+                temp_path = chunk_path + "_temp" + ext
                 processed_audio.export(temp_path, format=os.path.splitext(chunk_path)[1][1:])
 
                 with open(temp_path, "rb") as audio_file:
@@ -145,12 +151,18 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
             processed_audio = apply_noise_reduction(audio)
 
             # Export processed audio to temporary file
-            temp_path = file_path + "_processed"
+            # Save processed audio if path is provided
+            if processed_audio_path:
+                processed_audio.export(processed_audio_path, format=os.path.splitext(file_path)[1][1:])
+                print(f"Processed audio saved to: {processed_audio_path}")
+
+            temp_path = file_path + "_temp"
             processed_audio.export(temp_path, format=os.path.splitext(file_path)[1][1:])
 
             with open(temp_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
+                    prompt="this is a transcription of a meeting",
                     file=audio_file
                 )
                 transcribed_text = transcript.text
@@ -173,11 +185,12 @@ def main():
     parser = argparse.ArgumentParser(description='Transcribe audio file using OpenAI Whisper')
     parser.add_argument('file_path', help='Path to the audio file')
     parser.add_argument('-o', '--output', help='Path to save the transcription (optional)')
+    parser.add_argument('-p', '--processed-audio', help='Path to save the processed audio file (optional)')
     parser.add_argument('--api-key', help='OpenAI API key (optional if OPENAI_API_KEY env variable is set)')
     args = parser.parse_args()
 
     try:
-        transcription = transcribe_audio(args.file_path, args.output, args.api_key)
+        transcription = transcribe_audio(args.file_path, args.output, args.processed_audio, args.api_key)
         print("Transcription completed successfully")
         if args.output:
             print(f"Transcription saved to: {args.output}")
