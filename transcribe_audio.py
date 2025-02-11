@@ -36,9 +36,9 @@ def apply_noise_reduction(audio_segment: AudioSegment) -> AudioSegment:
     filtered_audio = audio_segment._spawn(filtered.astype(np.int16))
 
     # Normalize audio levels
-    # normalized_audio = normalize(filtered_audio)
+    normalized_audio = normalize(filtered_audio)
 
-    return filtered_audio #normalized_audio
+    return normalized_audio
 
 def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
     """
