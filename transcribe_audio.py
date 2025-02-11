@@ -4,10 +4,46 @@ import os
 from pathlib import Path
 from typing import List
 
+import numpy as np
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from openai import OpenAI
 from pydub import AudioSegment
+from pydub.effects import normalize
+from scipy import signal
 
+
+def apply_noise_reduction(audio_segment: AudioSegment) -> AudioSegment:
+    """
+    Apply noise reduction to an audio segment using both high-pass and low-pass filters.
+
+    Args:
+        audio_segment (AudioSegment): Input audio segment
+
+    Returns:
+        AudioSegment: Processed audio segment with reduced noise
+    """
+    # Convert to numpy array for processing
+    samples = np.array(audio_segment.get_array_of_samples())
+    sample_rate = audio_segment.frame_rate
+    nyquist = sample_rate // 2
+
+    # Apply high-pass filter to remove low frequency noise (below 80Hz)
+    high_cutoff = 80 / nyquist
+    b_high, a_high = signal.butter(4, high_cutoff, btype='high', analog=False)
+    high_filtered = signal.filtfilt(b_high, a_high, samples)
+
+    # Apply low-pass filter to remove high frequency noise (above 4000Hz)
+    low_cutoff = 4000 / nyquist
+    b_low, a_low = signal.butter(4, low_cutoff, btype='low', analog=False)
+    filtered = signal.filtfilt(b_low, a_low, high_filtered)
+
+    # Convert back to AudioSegment
+    filtered_audio = audio_segment._spawn(filtered.astype(np.int16))
+
+    # Normalize audio levels
+    normalized_audio = normalize(filtered_audio)
+
+    return normalized_audio
 
 def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
     """
@@ -50,13 +86,14 @@ def split_audio(file_path: str, chunk_size_mb: int = 24) -> List[str]:
 
     return chunk_paths
 
-def transcribe_audio(file_path, output_path=None, api_key=None):
+def transcribe_audio(file_path, output_path=None, processed_audio_path=None, api_key=None):
     """
     Transcribe an audio file using OpenAI's Whisper model.
 
     Args:
         file_path (str): Path to the audio file
         output_path (str, optional): Path to save the transcription. If not provided, only returns the text
+        processed_audio_path (str, optional): Path to save the processed audio file. If not provided, processed audio won't be saved
         api_key (str, optional): OpenAI API key. If not provided, will look for OPENAI_API_KEY env variable
 
     Returns:
@@ -81,15 +118,32 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
 
             for i, chunk_path in enumerate(chunk_paths):
                 print(f"Processing chunk {i+1}/{len(chunk_paths)}...")
-                with open(chunk_path, "rb") as audio_file:
+                # Load and process audio chunk
+                audio = AudioSegment.from_file(chunk_path)
+                processed_audio = apply_noise_reduction(audio)
+
+                # Get file extension
+                _, ext = os.path.splitext(chunk_path)
+
+                # Export processed chunk to temporary file
+                # Save processed chunk if path is provided
+                if processed_audio_path:
+                    processed_chunk_path = f"{processed_audio_path}_chunk_{i}{ext}"
+                    processed_audio.export(processed_chunk_path, format=os.path.splitext(chunk_path)[1][1:])
+
+                temp_path = chunk_path + "_temp" + ext
+                processed_audio.export(temp_path, format=os.path.splitext(chunk_path)[1][1:])
+
+                with open(temp_path, "rb") as audio_file:
                     transcript = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file
                     )
                     transcribed_text += transcript.text + "\n"
 
-                # Clean up chunk
+                # Clean up chunks
                 os.remove(chunk_path)
+                os.remove(temp_path)
 
             # Remove chunks directory if empty
             chunks_dir = os.path.dirname(chunk_paths[0])
@@ -97,12 +151,29 @@ def transcribe_audio(file_path, output_path=None, api_key=None):
                 os.rmdir(chunks_dir)
         else:
             # Process single file if size is acceptable
-            with open(file_path, "rb") as audio_file:
+            print("Applying noise reduction...")
+            audio = AudioSegment.from_file(file_path)
+            processed_audio = apply_noise_reduction(audio)
+
+            # Export processed audio to temporary file
+            # Save processed audio if path is provided
+            if processed_audio_path:
+                processed_audio.export(processed_audio_path, format=os.path.splitext(file_path)[1][1:])
+                print(f"Processed audio saved to: {processed_audio_path}")
+
+            temp_path = file_path + "_temp"
+            processed_audio.export(temp_path, format=os.path.splitext(file_path)[1][1:])
+
+            with open(temp_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
+                    prompt="this is a transcription of a meeting",
                     file=audio_file
                 )
                 transcribed_text = transcript.text
+
+            # Clean up temporary file
+            os.remove(temp_path)
 
         if output_path:
             output_dir = os.path.dirname(output_path)
@@ -119,11 +190,12 @@ def main():
     parser = argparse.ArgumentParser(description='Transcribe audio file using OpenAI Whisper')
     parser.add_argument('file_path', help='Path to the audio file')
     parser.add_argument('-o', '--output', help='Path to save the transcription (optional)')
+    parser.add_argument('-p', '--processed-audio', help='Path to save the processed audio file (optional)')
     parser.add_argument('--api-key', help='OpenAI API key (optional if OPENAI_API_KEY env variable is set)')
     args = parser.parse_args()
 
     try:
-        transcription = transcribe_audio(args.file_path, args.output, args.api_key)
+        transcription = transcribe_audio(args.file_path, args.output, args.processed_audio, args.api_key)
         print("Transcription completed successfully")
         if args.output:
             print(f"Transcription saved to: {args.output}")
