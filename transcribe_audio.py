@@ -14,7 +14,7 @@ from scipy import signal
 
 def apply_noise_reduction(audio_segment: AudioSegment) -> AudioSegment:
     """
-    Apply noise reduction to an audio segment.
+    Apply noise reduction to an audio segment using both high-pass and low-pass filters.
 
     Args:
         audio_segment (AudioSegment): Input audio segment
@@ -25,12 +25,17 @@ def apply_noise_reduction(audio_segment: AudioSegment) -> AudioSegment:
     # Convert to numpy array for processing
     samples = np.array(audio_segment.get_array_of_samples())
     sample_rate = audio_segment.frame_rate
+    nyquist = sample_rate // 2
 
     # Apply high-pass filter to remove low frequency noise (below 80Hz)
-    nyquist = sample_rate // 2
-    cutoff = 80 / nyquist
-    b, a = signal.butter(4, cutoff, btype='high', analog=False)
-    filtered = signal.filtfilt(b, a, samples)
+    high_cutoff = 80 / nyquist
+    b_high, a_high = signal.butter(4, high_cutoff, btype='high', analog=False)
+    high_filtered = signal.filtfilt(b_high, a_high, samples)
+
+    # Apply low-pass filter to remove high frequency noise (above 4000Hz)
+    low_cutoff = 4000 / nyquist
+    b_low, a_low = signal.butter(4, low_cutoff, btype='low', analog=False)
+    filtered = signal.filtfilt(b_low, a_low, high_filtered)
 
     # Convert back to AudioSegment
     filtered_audio = audio_segment._spawn(filtered.astype(np.int16))
@@ -115,7 +120,7 @@ def transcribe_audio(file_path, output_path=None, processed_audio_path=None, api
                 print(f"Processing chunk {i+1}/{len(chunk_paths)}...")
                 # Load and process audio chunk
                 audio = AudioSegment.from_file(chunk_path)
-                processed_audio = audio #apply_noise_reduction(audio)
+                processed_audio = apply_noise_reduction(audio)
 
                 # Get file extension
                 _, ext = os.path.splitext(chunk_path)
