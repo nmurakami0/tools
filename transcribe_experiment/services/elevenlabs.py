@@ -1,3 +1,4 @@
+import json
 import os
 
 import httpx
@@ -8,16 +9,24 @@ from .base import BaseSTTService
 class ElevenLabsService(BaseSTTService):
     needs_splitting = False
 
-    def transcribe_chunk(self, chunk_path: str, settings: dict) -> str:
-        url = self.config.get(
-            "base_url", "https://api.elevenlabs.io/v1/speech-to-text"
-        )
-
+    def _build_form_data(self, settings: dict) -> dict[str, str]:
         data: dict[str, str] = {
             "model_id": settings.get("model_id", "scribe_v1"),
         }
         if settings.get("language_code"):
             data["language_code"] = settings["language_code"]
+        if settings.get("no_verbatim") is not None:
+            data["no_verbatim"] = str(settings["no_verbatim"]).lower()
+        if settings.get("keyterms"):
+            data["keyterms"] = json.dumps(settings["keyterms"])
+        return data
+
+    def transcribe_chunk(self, chunk_path: str, settings: dict) -> str:
+        url = self.config.get(
+            "base_url", "https://api.elevenlabs.io/v1/speech-to-text"
+        )
+
+        data = self._build_form_data(settings)
 
         with open(chunk_path, "rb") as f:
             response = httpx.post(
@@ -35,11 +44,7 @@ class ElevenLabsService(BaseSTTService):
             "base_url", "https://api.elevenlabs.io/v1/speech-to-text"
         )
 
-        data: dict[str, str] = {
-            "model_id": settings.get("model_id", "scribe_v1"),
-        }
-        if settings.get("language_code"):
-            data["language_code"] = settings["language_code"]
+        data = self._build_form_data(settings)
 
         with open(chunk_path, "rb") as f:
             response = httpx.post(

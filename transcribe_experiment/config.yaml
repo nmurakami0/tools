@@ -48,6 +48,24 @@ runs:
     settings:
       model_id: scribe_v1
 
+  - id: el-v2-ja
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      language_code: ja
+
+  - id: el-v2-auto
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+
+  - id: el-v2-ja-clean
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      language_code: ja
+      no_verbatim: true
+
   - id: fw-multilingual
     service: faster_whisper
     settings:
