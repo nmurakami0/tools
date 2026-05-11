@@ -1,0 +1,124 @@
+audio_file: /Users/murakaminaoya/Downloads/audio_20260507170427.m4a
+
+split:
+  chunk_size_mb: 20
+
+output_dir: ./output
+
+services:
+  faster_whisper:
+    base_url: "http://localhost:8000/v1/audio/transcriptions"
+    model: "deepdml/faster-whisper-large-v3-turbo-ct2"
+  openai_transcribe:
+    model: "gpt-4o-transcribe"
+  elevenlabs:
+    base_url: "https://api.elevenlabs.io/v1/speech-to-text"
+
+runs:
+  - id: fw-ja-prompted
+    service: faster_whisper
+    settings:
+      language: ja
+      prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+      temperature: 0
+
+  - id: fw-auto
+    service: faster_whisper
+    settings:
+      temperature: 0
+
+  - id: gpt4o-ja-prompted
+    service: openai_transcribe
+    settings:
+      language: ja
+      prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+
+  - id: gpt4o-auto
+    service: openai_transcribe
+    settings: {}
+
+  - id: el-ja
+    service: elevenlabs
+    settings:
+      model_id: scribe_v1
+      language_code: ja
+
+  - id: el-auto
+    service: elevenlabs
+    settings:
+      model_id: scribe_v1
+
+  - id: el-v2-ja
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      language_code: ja
+
+  - id: el-v2-auto
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+
+  - id: el-v2-ja-clean
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      language_code: ja
+      no_verbatim: true
+
+  - id: fw-multilingual
+    service: faster_whisper
+    settings:
+      prompt: "OK so let me walk you through the current status. We finished the API integration last week. あと、認証のところはまだ残ってるんですけど、来週には対応できると思います。Right, and the dashboard metrics are looking good so far. 对，那个数据分析的部分我们已经完成了。Great, so next steps would be the load testing phase."
+      temperature: 0
+
+  - id: fw-ja-nocond
+    service: faster_whisper
+    settings:
+      language: ja
+      prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+      temperature: 0
+      condition_on_previous_text: false
+
+  - id: fw-multilingual-nocond
+    service: faster_whisper
+    settings:
+      prompt: "OK so let me walk you through the current status. We finished the API integration last week. あと、認証のところはまだ残ってるんですけど、来週には対応できると思います。Right, and the dashboard metrics are looking good so far. 对，那个数据分析的部分我们已经完成了。Great, so next steps would be the load testing phase."
+      temperature: 0
+      condition_on_previous_text: false
+
+  - id: gpt4o-multilingual
+    service: openai_transcribe
+    settings:
+      prompt: "OK so let me walk you through the current status. We finished the API integration last week. あと、認証のところはまだ残ってるんですけど、来週には対応できると思います。Right, and the dashboard metrics are looking good so far. 对，那个数据分析的部分我们已经完成了。Great, so next steps would be the load testing phase."
+
+  - id: fw-twopass
+    service: two_pass
+    settings:
+      segment_seconds: 30
+      confidence_threshold: 0.7
+      fallback_language: ja
+      pass1:
+        service: faster_whisper
+        settings:
+          temperature: 0
+      pass2:
+        service: faster_whisper
+        settings:
+          temperature: 0
+          prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+
+  - id: gpt4o-twopass
+    service: two_pass
+    settings:
+      segment_seconds: 30
+      confidence_threshold: 0.7
+      fallback_language: ja
+      pass1:
+        service: faster_whisper
+        settings:
+          temperature: 0
+      pass2:
+        service: openai_transcribe
+        settings:
+          prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
