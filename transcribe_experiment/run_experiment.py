@@ -63,11 +63,25 @@ def resolve_auth(services_config: dict, needed_services: set[str]) -> dict[str, 
             raise ValueError("OPENAI_API_KEY environment variable is required.")
         auth["openai_transcribe"] = key
 
+    if "openai_chat" in needed_services:
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            raise ValueError("OPENAI_API_KEY environment variable is required.")
+        auth["openai_chat"] = key
+
     if "elevenlabs" in needed_services:
         key = os.environ.get("ELEVENLABS_API_KEY")
         if not key:
             raise ValueError("ELEVENLABS_API_KEY environment variable is required.")
         auth["elevenlabs"] = key
+
+    if "gemini" in needed_services:
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            raise ValueError(
+                "GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable is required."
+            )
+        auth["gemini"] = key
 
     return auth
 
@@ -233,9 +247,8 @@ def main():
     if not os.path.exists(audio_file):
         raise FileNotFoundError(f"Audio file not found: {audio_file}")
 
-    needs_splitting = any(
-        run["service"] == "openai_transcribe" for run in runs
-    )
+    splitting_services = {"openai_transcribe", "openai_chat", "gemini"}
+    needs_splitting = any(run["service"] in splitting_services for run in runs)
     chunks_dir = os.path.join(output_dir, "chunks")
 
     if needs_splitting and not args.skip_split:

@@ -1,13 +1,17 @@
 from .base import BaseSTTService, ChunkResult, RunResult
 from .elevenlabs import ElevenLabsService
 from .faster_whisper import FasterWhisperService
+from .gemini import GeminiService
+from .openai_chat import OpenAIChatService
 from .openai_transcribe import OpenAITranscribeService
 from .two_pass import TwoPassService
 
 SERVICE_REGISTRY: dict[str, type[BaseSTTService]] = {
     "faster_whisper": FasterWhisperService,
     "openai_transcribe": OpenAITranscribeService,
+    "openai_chat": OpenAIChatService,
     "elevenlabs": ElevenLabsService,
+    "gemini": GeminiService,
     "two_pass": TwoPassService,
 }
 

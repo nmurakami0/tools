@@ -13,6 +13,12 @@ services:
     model: "gpt-4o-transcribe"
   elevenlabs:
     base_url: "https://api.elevenlabs.io/v1/speech-to-text"
+  openai_chat:
+    model: "gpt-audio"
+    base_url: "https://api.openai.com/v1/chat/completions"
+  gemini:
+    model: "gemini-3.1-flash-preview"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/models"
 
 runs:
   - id: fw-ja-prompted
@@ -122,3 +128,61 @@ runs:
         service: openai_transcribe
         settings:
           prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+
+  - id: gemini-flash-multilingual
+    service: gemini
+    settings:
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+
+  - id: openai-chat-multilingual
+    service: openai_chat
+    settings:
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+
+  - id: openai-chat-mini-multilingual
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+
+  - id: openai-chat-generic-minimal
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を文字起こししてください。"
+      temperature: 0
+
+  - id: openai-chat-generic-faithful
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を、発言された言語のまま、一切翻訳・要約せずに正確に文字起こししてください。複数言語が混在している場合も、それぞれの発言を元の言語で書き起こしてください。"
+      temperature: 0
+
+  - id: openai-chat-generic-verbatim
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を忠実に文字起こししてください。要件は次のとおりです。(1) 発言された言語のまま書き起こし、翻訳しない。(2) 言い直し・フィラー・相槌も含め、聞こえたままを再現する。(3) 句読点を適切に付与する。(4) 音声に含まれない説明・要約・コメントは出力しない。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-minimal
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を文字起こししてください。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-faithful
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を、発言された言語のまま、一切翻訳・要約せずに正確に文字起こししてください。複数言語が混在している場合も、それぞれの発言を元の言語で書き起こしてください。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-verbatim
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を忠実に文字起こししてください。要件は次のとおりです。(1) 発言された言語のまま書き起こし、翻訳しない。(2) 言い直し・フィラー・相槌も含め、聞こえたままを再現する。(3) 句読点を適切に付与する。(4) 音声に含まれない説明・要約・コメントは出力しない。"
+      temperature: 0
