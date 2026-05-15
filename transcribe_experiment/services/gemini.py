@@ -7,7 +7,7 @@ from .base import BaseSTTService
 
 
 class GeminiService(BaseSTTService):
-    needs_splitting = True
+    needs_splitting = False
 
     def transcribe_chunk(self, chunk_path: str, settings: dict) -> str:
         model = settings.get("model") or self.config.get(
@@ -42,6 +42,10 @@ class GeminiService(BaseSTTService):
             generation_config["temperature"] = settings["temperature"]
         if "max_output_tokens" in settings:
             generation_config["maxOutputTokens"] = settings["max_output_tokens"]
+        if "thinking_level" in settings:
+            generation_config["thinkingConfig"] = {
+                "thinkingLevel": settings["thinking_level"]
+            }
         if generation_config:
             body["generationConfig"] = generation_config
 

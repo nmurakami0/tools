@@ -20,6 +20,7 @@ class RunResult:
     chunks: list[ChunkResult]
     total_elapsed_seconds: float
     full_text: str = ""
+    verbose_chunks: list[dict] | None = None
 
     def __post_init__(self):
         if not self.full_text:
