@@ -63,11 +63,25 @@ def resolve_auth(services_config: dict, needed_services: set[str]) -> dict[str, 
             raise ValueError("OPENAI_API_KEY environment variable is required.")
         auth["openai_transcribe"] = key
 
+    if "openai_chat" in needed_services:
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            raise ValueError("OPENAI_API_KEY environment variable is required.")
+        auth["openai_chat"] = key
+
     if "elevenlabs" in needed_services:
         key = os.environ.get("ELEVENLABS_API_KEY")
         if not key:
             raise ValueError("ELEVENLABS_API_KEY environment variable is required.")
         auth["elevenlabs"] = key
+
+    if "gemini" in needed_services:
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            raise ValueError(
+                "GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable is required."
+            )
+        auth["gemini"] = key
 
     return auth
 
@@ -127,13 +141,57 @@ def execute_run(
 
     total_elapsed = time.monotonic() - total_start
 
+    verbose_chunks = getattr(service, "last_verbose_chunks", None) or None
+
     return RunResult(
         run_id=run_cfg["id"],
         service=run_cfg["service"],
         settings=run_cfg.get("settings", {}),
         chunks=chunk_results,
         total_elapsed_seconds=round(total_elapsed, 2),
+        verbose_chunks=verbose_chunks,
     )
+
+
+def _merge_verbose_chunks(payloads: list[dict]) -> dict:
+    from collections import Counter
+
+    merged_segments: list[dict] = []
+    cumulative_offset = 0.0
+    total_duration = 0.0
+    texts: list[str] = []
+    languages: list[str] = []
+    next_id = 0
+    for payload in payloads:
+        duration = float(payload.get("duration") or 0.0)
+        for seg in payload.get("segments") or []:
+            merged_segments.append(
+                {
+                    "id": next_id,
+                    "start": float(seg.get("start") or 0.0) + cumulative_offset,
+                    "end": float(seg.get("end") or 0.0) + cumulative_offset,
+                    "text": seg.get("text", ""),
+                }
+            )
+            next_id += 1
+        cumulative_offset += duration
+        total_duration += duration
+        if payload.get("text"):
+            texts.append(payload["text"])
+        if payload.get("language"):
+            languages.append(payload["language"])
+
+    language = ""
+    if languages:
+        language = Counter(languages).most_common(1)[0][0]
+
+    return {
+        "task": "transcribe",
+        "language": language,
+        "duration": total_duration,
+        "text": "\n".join(texts),
+        "segments": merged_segments,
+    }
 
 
 def save_result(result: RunResult, output_dir: str, audio_file: str):
@@ -142,6 +200,11 @@ def save_result(result: RunResult, output_dir: str, audio_file: str):
 
     with open(os.path.join(run_dir, "transcript.txt"), "w", encoding="utf-8") as f:
         f.write(result.full_text)
+
+    if result.verbose_chunks:
+        merged = _merge_verbose_chunks(result.verbose_chunks)
+        with open(os.path.join(run_dir, "transcript.json"), "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
 
     chunks_dir = os.path.join(run_dir, "chunks")
     os.makedirs(chunks_dir, exist_ok=True)
@@ -233,9 +296,8 @@ def main():
     if not os.path.exists(audio_file):
         raise FileNotFoundError(f"Audio file not found: {audio_file}")
 
-    needs_splitting = any(
-        run["service"] == "openai_transcribe" for run in runs
-    )
+    splitting_services = {"openai_transcribe", "openai_chat"}
+    needs_splitting = any(run["service"] in splitting_services for run in runs)
     chunks_dir = os.path.join(output_dir, "chunks")
 
     if needs_splitting and not args.skip_split:
@@ -259,14 +321,6 @@ def main():
         chunk_paths = []
 
     needed_services = {r["service"] for r in runs}
-    for run_cfg in runs:
-        if run_cfg["service"] == "two_pass":
-            s = run_cfg.get("settings", {})
-            if "pass1" in s:
-                needed_services.add(s["pass1"]["service"])
-            if "pass2" in s:
-                needed_services.add(s["pass2"]["service"])
-    needed_services.discard("two_pass")
     auth = resolve_auth(config.get("services", {}), needed_services)
     services_config = config.get("services", {})
 
@@ -278,7 +332,6 @@ def main():
         service = create_service(
             run_cfg["service"], services_config,
             auth.get(run_cfg["service"], ""),
-            auth=auth,
         )
         if hasattr(service, "output_dir"):
             service.output_dir = os.path.join(output_dir, run_cfg["id"])

@@ -1,7 +1,7 @@
 audio_file: /Users/murakaminaoya/Downloads/audio_20260507170427.m4a
 
 split:
-  chunk_size_mb: 20
+  chunk_size_mb: 5
 
 output_dir: ./output
 
@@ -13,6 +13,12 @@ services:
     model: "gpt-4o-transcribe"
   elevenlabs:
     base_url: "https://api.elevenlabs.io/v1/speech-to-text"
+  openai_chat:
+    model: "gpt-audio"
+    base_url: "https://api.openai.com/v1/chat/completions"
+  gemini:
+    model: "gemini-3-flash-preview"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/models"
 
 runs:
   - id: fw-ja-prompted
@@ -37,17 +43,6 @@ runs:
     service: openai_transcribe
     settings: {}
 
-  - id: el-ja
-    service: elevenlabs
-    settings:
-      model_id: scribe_v1
-      language_code: ja
-
-  - id: el-auto
-    service: elevenlabs
-    settings:
-      model_id: scribe_v1
-
   - id: el-v2-ja
     service: elevenlabs
     settings:
@@ -64,6 +59,19 @@ runs:
     settings:
       model_id: scribe_v2
       language_code: ja
+      no_verbatim: true
+
+  - id: el-v2-diarize
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      diarize: true
+
+  - id: el-v2-diarize-clean
+    service: elevenlabs
+    settings:
+      model_id: scribe_v2
+      diarize: true
       no_verbatim: true
 
   - id: fw-multilingual
@@ -92,33 +100,140 @@ runs:
     settings:
       prompt: "OK so let me walk you through the current status. We finished the API integration last week. あと、認証のところはまだ残ってるんですけど、来週には対応できると思います。Right, and the dashboard metrics are looking good so far. 对，那个数据分析的部分我们已经完成了。Great, so next steps would be the load testing phase."
 
-  - id: fw-twopass
-    service: two_pass
+  - id: gemini-flash-multilingual
+    service: gemini
     settings:
-      segment_seconds: 30
-      confidence_threshold: 0.7
-      fallback_language: ja
-      pass1:
-        service: faster_whisper
-        settings:
-          temperature: 0
-      pass2:
-        service: faster_whisper
-        settings:
-          temperature: 0
-          prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+      max_output_tokens: 32768
 
-  - id: gpt4o-twopass
-    service: two_pass
+  - id: gemini-flash-thinking-high
+    service: gemini
     settings:
-      segment_seconds: 30
-      confidence_threshold: 0.7
-      fallback_language: ja
-      pass1:
-        service: faster_whisper
-        settings:
-          temperature: 0
-      pass2:
-        service: openai_transcribe
-        settings:
-          prompt: "句読点や読点を適切に付けてください。丁寧な日本語で書き起こしてください。"
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。特に〇〇のトピックについて話しています。"
+      thinking_level: HIGH
+
+  - id: gemini-flash-thinking-generic
+    service: gemini
+    settings:
+      prompt: "添付の音声は多言語が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      thinking_level: HIGH
+
+  - id: gemini-flash-structured
+    service: gemini
+    settings:
+      system_instruction: |
+        You are an audio transcription engine. Convert the user-supplied audio into a meeting-style transcript.
+
+        Format your output exactly like this example, and nothing else:
+
+        00:00 - 00:30 Speaker 1 (English): So it's not related to any cost. Speaker 2 (English): It's a performance requirement. Speaker 1 (Japanese): ええと、そうですね。 Speaker 3 (Cantonese): 走爛的嘛。
+
+        Rules:
+        - Group utterances into roughly 30-second segments. Begin each segment with a "MM:SS - MM:SS" marker (timestamps relative to the start of this audio; start at 00:00).
+        - Label each speaker turn as "Speaker N (Language):" where N is a stable integer for that speaker across the whole audio, and Language names the spoken language (English, Japanese, Cantonese, Mandarin, etc.).
+        - Transcribe each utterance in the language it was spoken. Do not translate. Do not add parenthetical glosses or annotations.
+        - Plain text only. No markdown, no bold, no asterisks, no code fences, no headers, no preface, no closing summary.
+        - When the audio ends, stop. Do not extrapolate beyond what was spoken, and do not repeat phrases to fill space.
+      prompt: ""
+      temperature: 0.3
+      max_output_tokens: 32768
+
+  - id: openai-chat-multilingual
+    service: openai_chat
+    settings:
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+
+  - id: openai-chat-mini-multilingual
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声は日・英・中が混在する会議です。一切翻訳せず、発言された言語のまま、話者ごとに正確な文字起こしを生成してください。"
+      temperature: 0
+
+  - id: openai-chat-generic-minimal
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を文字起こししてください。"
+      temperature: 0
+
+  - id: openai-chat-generic-faithful
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を、発言された言語のまま、一切翻訳・要約せずに正確に文字起こししてください。複数言語が混在している場合も、それぞれの発言を元の言語で書き起こしてください。"
+      temperature: 0
+
+  - id: openai-chat-generic-verbatim
+    service: openai_chat
+    settings:
+      prompt: "添付の音声を忠実に文字起こししてください。要件は次のとおりです。(1) 発言された言語のまま書き起こし、翻訳しない。(2) 言い直し・フィラー・相槌も含め、聞こえたままを再現する。(3) 句読点を適切に付与する。(4) 音声に含まれない説明・要約・コメントは出力しない。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-minimal
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を文字起こししてください。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-faithful
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を、発言された言語のまま、一切翻訳・要約せずに正確に文字起こししてください。複数言語が混在している場合も、それぞれの発言を元の言語で書き起こしてください。"
+      temperature: 0
+
+  - id: openai-chat-mini-generic-verbatim
+    service: openai_chat
+    settings:
+      model: "gpt-audio-mini"
+      prompt: "添付の音声を忠実に文字起こししてください。要件は次のとおりです。(1) 発言された言語のまま書き起こし、翻訳しない。(2) 言い直し・フィラー・相槌も含め、聞こえたままを再現する。(3) 句読点を適切に付与する。(4) 音声に含まれない説明・要約・コメントは出力しない。"
+      temperature: 0
+
+  - id: openai-chat-verbose-json
+    service: openai_chat
+    settings:
+      response_format: verbose_json
+      prompt: "添付の音声を、発言された言語のまま忠実に文字起こししてください。複数言語が混在している場合も、それぞれの発言を元の言語で書き起こしてください。"
+      temperature: 0
+
+  - id: openai-chat-final
+    service: openai_chat
+    settings:
+      system_instruction: |
+        You are an audio transcription engine. Your only function is to convert the user-supplied audio into a written transcript.
+
+        Output rules:
+        - Output ONLY the transcript text. Nothing before it, nothing after it. No greetings, acknowledgments, headers, summaries, or commentary.
+        - Plain text only. No markdown, no JSON, no bullet points, no speaker labels.
+        - Transcribe each utterance in the language it was spoken. Do not translate.
+        - Write what was actually said, with natural punctuation. Do not paraphrase or rephrase.
+        - When the audio signal ends, stop. Do not extrapolate beyond what was spoken, and do not repeat phrases to fill space.
+      prompt: ""
+      temperature: 0
+      max_tokens: 10000
+      frequency_penalty: 0.5
+      presence_penalty: 0.0
+
+  - id: openai-chat-structured
+    service: openai_chat
+    settings:
+      system_instruction: |
+        You are an audio transcription engine. Convert the user-supplied audio into a meeting-style transcript.
+
+        Format your output exactly like this example, and nothing else:
+
+        00:00 - 00:30 Speaker 1 (English): So it's not related to any cost. Speaker 2 (English): It's a performance requirement. Speaker 1 (Japanese): ええと、そうですね。 Speaker 3 (Cantonese): 走爛的嘛。
+
+        Rules:
+        - Group utterances into roughly 30-second segments. Begin each segment with a "MM:SS - MM:SS" marker (timestamps relative to the start of this audio clip; start at 00:00).
+        - Label each speaker turn as "Speaker N (Language):" where N is a stable integer for that speaker across the whole clip, and Language names the spoken language (English, Japanese, Cantonese, Mandarin, etc.).
+        - Transcribe each utterance in the language it was spoken. Do not translate.
+        - Plain text only. No JSON, no markdown, no code fences, no headers, no preface, no closing summary.
+        - When the audio signal ends, stop. Do not extrapolate beyond what was spoken, and do not repeat phrases to fill space.
+      prompt: ""
+      temperature: 0
+      max_tokens: 10000
+      frequency_penalty: 0.5
+      presence_penalty: 0.0
